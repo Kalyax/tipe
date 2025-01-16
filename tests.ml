@@ -1,11 +1,16 @@
 type variable = string;;
+type coef = float;;
+type exposant = int;;
 
 type factor =
   | Indet of variable 
   | F of polynomial
-and power = factor * int
-and monomial = float * (power list)
+and power = factor * exposant
+and monomial = coef * (power list) (* coef * [factor * exposant] *)
 and polynomial = monomial list;;
+
+let null_p () : polynomial = [0.0, []];;
+let one_p () : polynomial = [1.0, []];;
 
 let rec print_polynomial (p: polynomial): unit =
   let print_monomial m = 
@@ -35,7 +40,7 @@ let sum_of_polynomial (p1: polynomial) (p2: polynomial) : polynomial =
 let simplify_polynomial p = sum_of_polynomial p [];;
 
 
-
+(*Prends deux monome (coef*power list), et renvoie leur produit*)
 let product_of_monomial (m1: monomial) (m2: monomial) : monomial =
   let coef = (fst m1) *. (fst m2) in
   let n_m1 = List.length (snd m1) in
@@ -60,23 +65,52 @@ let product_of_polynomial p1 p2 =
   simplify_polynomial !result
 ;;
 
-(*let develop_factors (p: polynomial) = 
-  let action_monomial m = 
+let rec power_polynomial p n : polynomial =
+  if n = 1 then p
+  else product_of_polynomial p (power_polynomial p (n-1))
+;;
 
-  List.iter () p
-;;*)
+let develop_factors (p: polynomial) = 
+  (*fait le produit de tous les facteurs dans un monome et renvoie un polynome*)
+  let action_monomial (mono: monomial) : polynomial = 
+    let coef = fst mono in
+    (*power = factor * exposant *)
+    let powers = snd mono in
 
-let get_indeterminates (p: polynomial) =
+    (*faire le produit des powers*)
+    let rec produit (ps: power list): polynomial =
+      match ps with
+      | [] -> one_p ()
+      | p::t -> (match p with 
+                | (Indet x, e) -> product_of_polynomial [(1.0, [(Indet x,e)])] (produit t)
+                | (F f, e) -> product_of_polynomial (power_polynomial f e) (produit t)
+                )
+    in product_of_polynomial ([(coef, [])]) (produit powers)
+  in 
+  let to_sum_poly = List.map action_monomial p in
+  let head = List.hd to_sum_poly in
+  let queue = List.tl to_sum_poly in
+  List.fold_left sum_of_polynomial head queue
+;;
+
+let rec get_indeterminates (p: polynomial) =
   let tbl = Hashtbl.create (List.length p) in
+  let add_indet i = match Hashtbl.find_opt tbl i with
+  | None -> Hashtbl.add tbl i 0
+  | Some _ -> ()
+  in
   List.iter (fun m -> 
     List.iter (fun indet ->
       let indet2 = fst indet in
-      match Hashtbl.find_opt tbl indet2 with
-      | None -> Hashtbl.add tbl indet2 0
-      | Some i -> ()
+      match indet2 with
+      | Indet _ -> add_indet indet2
+      | F pp -> begin 
+        let indets = get_indeterminates pp in
+        List.iter (fun i -> add_indet i) indets
+      end
     ) (snd m)
   ) p;
-  Hashtbl.fold (fun k v acc -> k::acc) tbl [];;
+  Hashtbl.fold (fun k _ acc -> k::acc) tbl [];;
 
 let rec merge_lists l1 l2 =
   match l1 with
@@ -107,7 +141,7 @@ let increment_counter (d: int) (counter: int array) n =
   is_over;
 ;;
 
-let rec array_sum l = 
+let array_sum l = 
   let somme = ref 0 in
   Array.iter (fun i -> somme := !somme + i) l;
   !somme;;
@@ -133,6 +167,40 @@ let generate_polynomial d indets : polynomial =
   !monomials
 ;;
 
+let evaluate (p: polynomial) indet (value: float) : polynomial =
+  let rec eval_powers m = match m with
+    | [] -> (1.0, [])
+    | h::t -> begin
+      let hindet = fst h in
+      let hpower = float_of_int (snd h) in
+      if hindet = indet then begin
+        let (c,tt) = eval_powers t in 
+        ((Float.pow value hpower)*.c, tt)
+      end
+      else let (c,tt) = (eval_powers t) in (c, h::tt)
+    end
+  in
+  List.map (fun monos ->
+    let coef = fst monos in
+    let powers = snd monos in
+    let (new_c, new_monos) = eval_powers powers in
+    (coef*.new_c, new_monos)
+  ) p;;
+
+let rec get_degree (p: polynomial) : int =
+  let max_d = ref (-1) in
+  List.iter (fun mono -> 
+    let powers = snd mono in
+    let exposants = List.map (fun (factor, exposant) -> 
+      match factor with
+      | Indet _ -> exposant
+      | F f -> (get_degree f)*exposant
+    ) powers in
+    let mono_deg = List.fold_left ( + ) 0 exposants in
+    if mono_deg > !max_d then max_d := mono_deg
+  ) p; 
+  !max_d
+;;
 
 
 (*4x^2y + y + 2*)
@@ -146,36 +214,73 @@ let e3 = [
    (1.0, [(F e2,2)])
   ];;
 
+let f1 = [
+  (1.0, [(Indet "x", 2)]);
+  (-1.0, [])
+];;
+
+let f2 = [
+  (1.0, [(Indet "x", 1)]);
+  (1.0, [(Indet "y", 1)])
+];;
+
+let f3 = [
+  (1.0, [(Indet "x", 1)]);
+  (1.0, [(Indet "z", 1)])
+];;
+
+let f4 = [
+  (1.0, [(Indet "y", 1)]);
+  (1.0, [(Indet "z", 1)])
+];;
+
+
 let print_array l = Array.iter (fun e -> Printf.printf "%d->" e) l; print_newline ();;
 
-print_polynomial @@ generate_polynomial 3 [Indet "x"; Indet "y"];;
+(*let p = generate_polynomial 3 [Indet "x"; Indet "y"];;
+print_polynomial p;;
 print_newline ();;
+let p2 = evaluate p (Indet "x") 2.0;;
+print_polynomial p2;;
+print_newline ();;*)
 
-print_polynomial e2;;
+(*print_polynomial e2;;
 print_newline ();;
-print_polynomial @@ product_of_polynomial e2 e3;;
+print_polynomial @@ product_of_polynomial e2 e3;;*)
+
 
 let nulla (system: polynomial list) =
-   let n = List.length system in 
    let d = ref 1 in
-   let k = 999 in (* borne sup à regarder *)
+   let k = 1 in (* borne sup à regarder *)
    while !d <= k do
     (*création des beta_i*)
     let indeterminates = get_system_indeterminates system in
+    (*TODO: probleme avec generate_polynomial sur les indices des c_k*)
     let betas = List.map (fun _ -> generate_polynomial !d indeterminates) system in
 
-    let cert = 0 in
-    (* trouver moyen de mettre des inconnues en coef des monomes *)
+    let rec build_cert system betas =
+      (*system et betas toujours de la même longueur*)
+      match (system, betas) with
+      | ([],[]) -> null_p ()
+      | (f_i::t1, b_i::t2) -> sum_of_polynomial (product_of_polynomial b_i f_i) (build_cert t1 t2)
+      | _ -> failwith "Impossible"
+    in
+    (*? Pas besoin de le simplifier ?*)
+    let cert = develop_factors @@ simplify_polynomial (build_cert system betas) in
+
+    
+    print_polynomial cert;
+    print_newline ();
+    
+
+
      d := !d + 1
    done;;
+
+(*nulla [f1;f2;f3;f4];;*)
 
 
 type graph = int list list;;
 
 (* un literal par clause ajoute 3 sommets au graphe *)
 (* chaque clause ajoute (nb_noeud - 1)*3 sommets (sans compter les sommets des littéraux) *)
-let test (fnc: int list list) = 0
-  
-;;
-
-test [[0;1];[1;2]];;
