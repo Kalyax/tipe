@@ -116,6 +116,7 @@ let rec power_polynomial p n : polynomial =
   else product_of_polynomial p (power_polynomial p (n-1))
 ;;
 
+(*on obtient un polynome entièrement développé*)
 let develop_factors (p: polynomial) = 
   (*fait le produit de tous les facteurs dans un monome et renvoie un polynome*)
   let action_monomial (mono: monomial) : polynomial = 
@@ -139,6 +140,7 @@ let develop_factors (p: polynomial) =
   List.fold_left sum_of_polynomial head queue
 ;;
 
+(*donne la liste des indéterminées présente dans un polynome*)
 let rec get_indeterminates (p: polynomial) =
   let tbl = Hashtbl.create (List.length p) in
   let add_indet i = match Hashtbl.find_opt tbl i with
@@ -195,7 +197,7 @@ let rec array_sum l =
 let generate_polynomial d indets coef_count : polynomial = 
   let n = List.length indets in
   let counter = Array.make n 0 in
-  let monomials = ref [] in
+  let monomials = ref [] in (*type polynomial*)
   (*let coef_count = ref 0 in*)
   while increment_counter d counter n do
     if array_sum counter <= d then begin 
@@ -252,6 +254,117 @@ let rec get_degree (p: polynomial) : int =
   !max_d
 ;;
 
+(*à utiliser sur un polynome factorisé dans l'idéal*)
+let remove_c_factor (mono: monomial) cc =
+  let rec aux factors =
+    match factors with
+    | [] -> []
+    | (factor, exp)::t -> 
+      (match factor with
+      | Indet c -> if String.get c 0 = 'c' then (cc := (Some (factor, exp)); t) else (factor, exp)::(aux t)
+      | _ -> failwith "Erreur")
+  in aux (snd mono);;
+
+let factorized_form (p: polynomial) : polynomial list =
+  let htbl : (power list, polynomial) Hashtbl.t = Hashtbl.create 999 in
+  List.iter (
+    fun monomial -> 
+      let c = ref None in
+      let clean_monomial = remove_c_factor monomial c in
+      assert (!c != None);
+
+      let factor = Option.get !c in
+      match Hashtbl.find_opt htbl clean_monomial with
+      | None -> Hashtbl.add htbl clean_monomial [(B,[factor])]
+      | Some l -> Hashtbl.replace htbl clean_monomial ((B,[factor])::l)
+  ) p;
+  let one = Hashtbl.find_opt htbl [] in
+  match one with
+  | None -> failwith "Erreur ??????"
+  | Some o -> (Hashtbl.remove htbl []; o::(List.of_seq (Hashtbl.to_seq_values htbl)))
+;;
+
+  (*a appliquer sur les polynome en c_...*)
+let matrix_from_system (system: polynomial list) : int array array =
+  let indeterminates = get_system_indeterminates system in
+  let n = List.length indeterminates in
+  let m = List.length system in
+  let matrix = Array.make_matrix m n 0 in
+
+  List.iteri (fun i p ->
+    List.iter (fun (coef, powers) ->
+      List.iter (fun (indet, exp) ->
+        match indet with
+        | Indet s -> 
+          let j = int_of_string (String.sub s 1 (String.length s - 1)) in
+          matrix.(i).(j) <- 1
+        | _ -> ()
+      ) powers
+    ) p
+  ) system;
+  matrix
+;;
+
+let print_matrix (matrix: int array array) =
+  Array.iter (fun row ->
+    Array.iter (fun elem ->
+      Printf.printf "%d-" elem
+    ) row;
+    print_newline ()
+  ) matrix;
+;;
+
+let xor_row r1 r2 =
+  Array.mapi (fun i x -> (x + r2.(i)) mod 2) r1
+
+let swap a i j =
+  let tmp = a.(i) in
+  a.(i) <- a.(j);
+  a.(j) <- tmp
+
+let solve_mod2_general (a : int array array) (b : int array) : int array option =
+  let m = Array.length a in
+  let n = Array.length a.(0) in
+  let aug = Array.init m (fun i -> Array.append (Array.copy a.(i)) [|b.(i)|]) in
+  let pivot_cols = Array.make n (-1) in
+  let row = ref 0 in
+
+  for col = 0 to n - 1 do
+    (* Find pivot *)
+    let pivot = ref (-1) in
+    for r = !row to m - 1 do
+      if aug.(r).(col) = 1 then pivot := r
+    done;
+    if !pivot <> -1 then begin
+      swap aug !row !pivot;
+      pivot_cols.(col) <- !row;
+      (* Eliminate below and above *)
+      for r = 0 to m - 1 do
+        if r <> !row && aug.(r).(col) = 1 then
+          aug.(r) <- xor_row aug.(r) aug.(!row)
+      done;
+      incr row
+    end
+  done;
+
+  (* Check for inconsistency *)
+  let inconsistent = Array.exists (fun r ->
+    let zero_row = Array.sub r 0 n in
+    Array.for_all ((=) 0) zero_row && r.(n) = 1
+  ) aug in
+
+  if inconsistent then None
+  else
+    (* Back-substitute (construct particular solution) *)
+    let x = Array.make n 0 in
+    for col = 0 to n - 1 do
+      let row_idx = pivot_cols.(col) in
+      if row_idx <> -1 then
+        x.(col) <- aug.(row_idx).(n)
+    done;
+    Some x
+;;
+
 (*4x^2y + y + 2*)
 let e2 = [ (B, [(Indet "x", 2); (Indet "y", 1)]) ; 
            (B, [(Indet "y", 1)]) ; 
@@ -283,10 +396,10 @@ let f4 = [
   (B, [(Indet "z", 1)])
 ];;
 
-
 let print_array l = Array.iter (fun e -> Printf.printf "%d->" e) l; print_newline ();;
 
-(*let p = generate_polynomial 3 [Indet "x"; Indet "y"];;
+(*let exp = ref 0;;
+let p = generate_polynomial 3 [Indet "x"; Indet "y"] exp;;
 print_polynomial p;;
 print_newline ();;
 let p2 = evaluate p (Indet "x") 2.0;;
@@ -303,7 +416,9 @@ let nulla (system: polynomial list) =
   let n = List.length indeterminates in
   let d = ref 1 in
   let k = int_of_float @@ float_of_int (max 3 (List.fold_left max (Int.min_int) (List.map get_degree system))) ** float_of_int n in (*Kollar*)
-  while !d <= 1 do
+  print_int k;
+  while !d <= k do
+    print_int !d;
     (*création des beta_i*)
     let coef_count = ref 0 in
     let betas = List.map (fun _ -> generate_polynomial !d indeterminates coef_count) system in
@@ -319,26 +434,106 @@ let nulla (system: polynomial list) =
     (*? Pas besoin de le simplifier ?*)
     let cert = develop_factors @@ simplify_polynomial (build_cert system betas) in
 
+    let eqs = factorized_form cert in
     
-    print_polynomial cert;
+    (*print_polynomial cert;
+    print_newline ();
+    print_newline ();
+    print_polynomial @@ Option.get spe;
+    print_newline ();
     print_newline ();
 
+    List.iter (fun p -> 
+      print_polynomial p;
+      print_newline ()) eqs;*)
+
     (*factoriser les polynomes pour en extraire un systeme linéaire*)
-    
+    let matrix = matrix_from_system eqs in
+
+    (*print_matrix matrix;*)
+    let b = Array.make (Array.length matrix) 0 in
+    b.(0) <- 1;
 
 
-     d := !d + 1
+    let t = solve_mod2_general matrix b in
+
+    match t with
+    | Some x ->
+        Printf.printf "Solution: [ %s ]\n"
+          (String.concat " " (List.map string_of_int (Array.to_list x))); failwith "Fini"
+    | None ->
+        print_endline "Pas de solution";
+
+
+    d := !d + 1
    done;;
 
-nulla [f1;f2;f3;f4];;
 
 
-type graph = int list list;;
 
-(* un literal par clause ajoute 3 sommets au graphe *)
-(* chaque clause ajoute (nb_noeud - 1)*3 sommets (sans compter les sommets des littéraux) *)
-let test (fnc: int list list) = 0
-  
+
+
+
+
+
+
+
+
+
+
+
+type graph = int array array;;
+(*matrice d'adjacence*)
+
+let create_graph n = Array.make_matrix n n 0;;
+
+let set_edge g i j =
+  g.(i).(j) <- 1;
+  g.(j).(i) <- 1
+;;
+let remove_edge g i j =
+  g.(i).(j) <- 0;
+  g.(j).(i) <- 0
+;;
+let is_edge g i j =
+  g.(i).(j) = 1 ;;
 ;;
 
-test [[0;1];[1;2]];;
+let graph_to_polynomial g =
+  let s = Array.length g in
+  let p = ref [] in
+
+  for i = 0 to s - 1 do 
+    p := [(B, [(Indet ("x"^(string_of_int i)), 3)]); (B, [])]::!p;
+    for j = i to s - 1 do
+      if is_edge g i j then begin
+        p := ([
+          (B, [(Indet ("x"^(string_of_int i)), 2)]);
+          (B, [(Indet ("x"^(string_of_int i)), 1); (Indet ("x"^(string_of_int j)), 1)]);
+          (B, [(Indet ("x"^(string_of_int j)), 2)]);
+        ])::!p
+      end
+    done
+  done;
+
+  !p
+;;
+
+(*let g = create_graph 3;;
+set_edge g 0 1;
+set_edge g 0 2;
+set_edge g 1 2;
+
+let k = create_graph 4 in
+set_edge k 0 1;
+set_edge k 0 2;
+set_edge k 0 3;
+set_edge k 1 2;
+set_edge k 1 3;
+set_edge k 2 3;
+
+let ks = graph_to_polynomial k in
+
+let ps = graph_to_polynomial g in
+
+nulla ps;;*)
