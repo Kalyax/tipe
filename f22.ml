@@ -1,33 +1,16 @@
-type f2 = A | B;;
+type f2 = int;;
 
-let int_to_f2 i = 
-  if i mod 2 = 0 then A
-  else B
-;;
+let zero : f2 = 0;;
+let one : f2 = 1;;
 
-let float_to_f2 f =
-  if f mod_float 2 = 0.0 then A
-  else if f mod_float 2 = 1.0 then B
-  else raise Exit
-;;
+let norme x =
+  let r = x mod 2 in
+  if r < 0 then r + 2 else r
 
-let f2_to_int x =
-  match x with
-  | A -> 0
-  | B -> 1
-;;
+let ( +& ) (a: f2) (b: f2) : f2 = norme (a + b);;
 
-let ( +& ) (a: f2) (b: f2) : f2 = 
-  match (a,b) with
-  | (A,A) | (B,B) -> A
-  | (A,B) | (B,A) -> B
-;;
+let ( *& )  (a: f2) (b: f2) : f2 = norme (a * b);;
 
-let ( *& )  (a: f2) (b: f2) : f2 = 
-  match (a,b) with
-  | (A,A) | (A,B) | (B,A)-> A
-  | (B,B)-> B
-;;
 
 type variable = string;;
 type exposant = int;;
@@ -39,8 +22,8 @@ and power = factor * exposant
 and monomial = f2 * (power list) (* coef * [factor * exposant] *)
 and polynomial = monomial list;;
 
-let null_p () : polynomial = [A, []];;
-let one_p () : polynomial = [B, []];;
+let null_p () : polynomial = [zero, []];;
+let one_p () : polynomial = [one, []];;
 
 let rec print_polynomial p =
   match p with
@@ -48,7 +31,7 @@ let rec print_polynomial p =
   | (coef, facteurs)::pp -> begin
 
     (*Affiche le coef du monome*)
-    print_int @@ f2_to_int coef;
+    print_int @@ norme coef;
 
     (*Affiche chacun des facteur du monome*)
     List.iter (fun (facteur, exp) -> 
@@ -76,8 +59,8 @@ let sum_of_polynomial (p1: polynomial) (p2: polynomial) : polynomial =
     match Hashtbl.find_opt tbl (snd m) with
     | None -> Hashtbl.add tbl (snd m) (fst m)
     | Some mm -> (
-      if (fst m) +& mm = A then Hashtbl.remove tbl (snd m)
-      else Hashtbl.replace tbl (snd m) B
+      if (fst m) +& mm = zero then Hashtbl.remove tbl (snd m)
+      else Hashtbl.replace tbl (snd m) one
     )
   in List.iter action_monomial p1; List.iter action_monomial p2;
   Hashtbl.fold (fun k v acc -> (v, k)::acc) tbl []
@@ -105,7 +88,7 @@ let product_of_polynomial p1 p2 =
   List.iter (fun m1 -> 
     List.iter (fun m2 ->
       let mono = product_of_monomial m1 m2 in
-      if fst mono <> A then result := mono::(!result)
+      if fst mono <> zero then result := mono::(!result)
     ) p2
   ) p1;
   simplify_polynomial !result
@@ -129,7 +112,7 @@ let develop_factors (p: polynomial) =
       match ps with
       | [] -> one_p ()
       | p::t -> (match p with 
-                | (Indet x, e) -> product_of_polynomial [(B, [(Indet x,e)])] (produit t)
+                | (Indet x, e) -> product_of_polynomial [(one, [(Indet x,e)])] (produit t)
                 | (F f, e) -> product_of_polynomial (power_polynomial f e) (produit t)
                 )
     in product_of_polynomial ([(coef, [])]) (produit powers)
@@ -210,11 +193,11 @@ let generate_polynomial d indets coef_count : polynomial =
         if counter.(!i) <> 0 then powers := (indet, counter.(!i))::!powers
       ) indets;
       (*let powers = (Indet "c", 1)::(List.map (fun indet -> i := !i + 1; (indet, counter.(!i))) indets) in*)
-      monomials := (B, !powers)::!monomials
+      monomials := (one, !powers)::!monomials
     end 
   done;
   (*ajout monome constant*)
-  monomials := (B, [(Indet ("c"^(string_of_int !coef_count)),1)])::!monomials;
+  monomials := (one, [(Indet ("c"^(string_of_int !coef_count)),1)])::!monomials;
   coef_count := !coef_count + 1;
   !monomials
 ;;
@@ -275,8 +258,8 @@ let factorized_form (p: polynomial) : polynomial list =
 
       let factor = Option.get !c in
       match Hashtbl.find_opt htbl clean_monomial with
-      | None -> Hashtbl.add htbl clean_monomial [(B,[factor])]
-      | Some l -> Hashtbl.replace htbl clean_monomial ((B,[factor])::l)
+      | None -> Hashtbl.add htbl clean_monomial [(one,[factor])]
+      | Some l -> Hashtbl.replace htbl clean_monomial ((one,[factor])::l)
   ) p;
   let one = Hashtbl.find_opt htbl [] in
   match one with
@@ -366,34 +349,34 @@ let solve_mod2_general (a : int array array) (b : int array) : int array option 
 ;;
 
 (*4x^2y + y + 2*)
-let e2 = [ (B, [(Indet "x", 2); (Indet "y", 1)]) ; 
-           (B, [(Indet "y", 1)]) ; 
-           (B, [])
+let e2 = [ (one, [(Indet "x", 2); (Indet "y", 1)]) ; 
+           (one, [(Indet "y", 1)]) ; 
+           (one, [])
          ];;
 
 (*e2^2*)
 let e3 = [
-   (B, [(F e2,2)])
+   (one, [(F e2,2)])
   ];;
 
 let f1 = [
-  (B, [(Indet "x", 2)]);
-  (B, [])
+  (one, [(Indet "x", 2)]);
+  (one, [])
 ];;
 
 let f2 = [
-  (B, [(Indet "x", 1)]);
-  (B, [(Indet "y", 1)])
+  (one, [(Indet "x", 1)]);
+  (one, [(Indet "y", 1)])
 ];;
 
 let f3 = [
-  (B, [(Indet "x", 1)]);
-  (B, [(Indet "z", 1)])
+  (one, [(Indet "x", 1)]);
+  (one, [(Indet "z", 1)])
 ];;
 
 let f4 = [
-  (B, [(Indet "y", 1)]);
-  (B, [(Indet "z", 1)])
+  (one, [(Indet "y", 1)]);
+  (one, [(Indet "z", 1)])
 ];;
 
 let print_array l = Array.iter (fun e -> Printf.printf "%d->" e) l; print_newline ();;
@@ -417,8 +400,9 @@ let nulla (system: polynomial list) =
   let d = ref 1 in
   let k = int_of_float @@ float_of_int (max 3 (List.fold_left max (Int.min_int) (List.map get_degree system))) ** float_of_int n in (*Kollar*)
   print_int k;
+  print_newline ();
   while !d <= k do
-    print_int !d;
+    Printf.printf "%d-" !d;
     (*création des beta_i*)
     let coef_count = ref 0 in
     let betas = List.map (fun _ -> generate_polynomial !d indeterminates coef_count) system in
@@ -460,7 +444,7 @@ let nulla (system: polynomial list) =
     match t with
     | Some x ->
         Printf.printf "Solution: [ %s ]\n"
-          (String.concat " " (List.map string_of_int (Array.to_list x))); failwith "Fini"
+          (String.concat " " (List.map string_of_int (Array.to_list x))); failwith "Système possède une solution"
     | None ->
         print_endline "Pas de solution";
 
@@ -502,15 +486,14 @@ let is_edge g i j =
 let graph_to_polynomial g =
   let s = Array.length g in
   let p = ref [] in
-
+  p := [(one, [(Indet ("x1"), 3)]); (one, [])]::!p;
   for i = 0 to s - 1 do 
-    p := [(B, [(Indet ("x"^(string_of_int i)), 3)]); (B, [])]::!p;
     for j = i to s - 1 do
       if is_edge g i j then begin
         p := ([
-          (B, [(Indet ("x"^(string_of_int i)), 2)]);
-          (B, [(Indet ("x"^(string_of_int i)), 1); (Indet ("x"^(string_of_int j)), 1)]);
-          (B, [(Indet ("x"^(string_of_int j)), 2)]);
+          (one, [(Indet ("x"^(string_of_int i)), 2)]);
+          (one, [(Indet ("x"^(string_of_int i)), 1); (Indet ("x"^(string_of_int j)), 1)]);
+          (one, [(Indet ("x"^(string_of_int j)), 2)]);
         ])::!p
       end
     done
@@ -519,12 +502,14 @@ let graph_to_polynomial g =
   !p
 ;;
 
-(*let g = create_graph 3;;
+let g = create_graph 3;;
 set_edge g 0 1;
 set_edge g 0 2;
 set_edge g 1 2;
 
-let ps = graph_to_polynomial g in*)
+let ps = graph_to_polynomial g in
+
+nulla ps;;
 
 (*let k = create_graph 4 in
 set_edge k 0 1;
@@ -538,7 +523,7 @@ let ks = graph_to_polynomial k in
 
 nulla ks;;*)
 
-let k = create_graph 12 in
+(*let k = create_graph 12 in
 set_edge k 0 1; 
 set_edge k 1 2; 
 set_edge k 2 7; 
@@ -564,4 +549,4 @@ set_edge k 6 10;
 set_edge k 7 11; 
 
 let ks = graph_to_polynomial k in
-nulla ks;;
+nulla ks;;*)
